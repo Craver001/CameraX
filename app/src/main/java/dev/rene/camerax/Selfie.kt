@@ -2,13 +2,20 @@ package dev.rene.camerax
 
 import LuminosityAnalyzer
 import android.Manifest
+import android.app.Activity
+import android.app.AlertDialog
 import android.content.ContentValues
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.widget.Button
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +28,7 @@ import androidx.core.view.WindowInsetsCompat
 import dev.rene.camerax.MainActivity.Companion
 
 import dev.rene.camerax.databinding.ActivitySelfieBinding
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -71,29 +79,22 @@ class Selfie : AppCompatActivity() {
     }
 
     private fun takePhoto() {
-        // Get a stable reference of the modifiable image capture use case
         val imageCapture = imageCapture ?: return
 
-        // Create time stamped name and MediaStore entry.
         val name = SimpleDateFormat(MainActivity.FILENAME_FORMAT, Locale.US)
             .format(System.currentTimeMillis())
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if(Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
                 put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CameraX-Image")
             }
         }
 
-        // Create output options object which contains file + metadata
         val outputOptions = ImageCapture.OutputFileOptions
-            .Builder(contentResolver,
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                contentValues)
+            .Builder(contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
             .build()
 
-        // Set up image capture listener, which is triggered after photo has
-        // been taken
         imageCapture.takePicture(
             outputOptions,
             ContextCompat.getMainExecutor(this),
@@ -102,16 +103,45 @@ class Selfie : AppCompatActivity() {
                     Log.e(MainActivity.TAG, "Photo capture failed: ${exc.message}", exc)
                 }
 
-                override fun
-                        onImageSaved(output: ImageCapture.OutputFileResults){
-                    val msg = "Photo capture succeeded: ${output.savedUri}"
-                    Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
-                    Log.d(MainActivity.TAG, msg)
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val savedUri = output.savedUri
+                    if (savedUri != null) {
+                        showImagePreviewDialog(savedUri)
+                    }
                 }
             }
         )
     }
 
+
+    private fun showImagePreviewDialog(imageUri: Uri) {
+        val dialogView = layoutInflater.inflate(R.layout.preview_dialog, null)
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        val capturedImageView = dialogView.findViewById<ImageView>(R.id.dialogCapturedImageView)
+        capturedImageView.setImageURI(imageUri)
+
+        dialogView.findViewById<Button>(R.id.buttonRetake).setOnClickListener {
+            dialog.dismiss()
+            startCamera(currentCameraSelector) // Retake the photo
+        }
+
+        dialogView.findViewById<Button>(R.id.buttonOk).setOnClickListener {
+            dialog.dismiss()
+            // Pass the imageUri to another activity
+// In CameraX activity, after taking the photo
+            val resultIntent = Intent().apply {
+                putExtra("capturedImageUri", imageUri.toString())
+            }
+            setResult(Activity.RESULT_OK, resultIntent)
+            finish()
+
+        }
+
+        dialog.show()
+    }
 
 
     private fun startCamera(cameraSelector: CameraSelector) {
